@@ -1,5 +1,7 @@
 # RAG Practice
 
+**Live app: [ragagent.fly.dev](https://ragagent.fly.dev/)**
+
 Experiments building Retrieval-Augmented Generation (RAG) pipelines with [LlamaIndex](https://www.llamaindex.ai/), plus a deployable tool-using chatbot built on top of them.
 
 ## Layout
@@ -13,32 +15,35 @@ scripts/      setup scripts (bootstrap.ps1)
 
 ## `notebooks/rag_notebook.ipynb`
 
-Core RAG fundamentals, built around the *"How to Build a Career in AI"* eBook. Indexes the PDF with a local embedding model (`BAAI/bge-small-en-v1.5`) and Gemini as the LLM, then experiments with different retrieval strategies: fixed-size chunking vs. semantic chunking, and `BAAI/bge-small` vs. `all-mpnet-base-v2` embeddings. Ends with a small retrieval evaluation harness (hit rate / MRR) to compare how well each configuration surfaces the correct source chunk for a set of test questions.
+Covers the basics of RAG, built around the *"How to Build a Career in AI"* eBook. It indexes the PDF with a local embedding model (`BAAI/bge-small-en-v1.5`) and uses Gemini as the LLM. Then it tries out different retrieval strategies: fixed-size chunking vs. semantic chunking, and `BAAI/bge-small` vs. `all-mpnet-base-v2` embeddings. It ends with a small retrieval evaluation harness (hit rate / MRR) that compares how well each setup finds the right source chunk for a set of test questions.
 
 ## `notebooks/multimodal_rag.ipynb`
 
-Extends RAG beyond plain text. Loads two research papers (a backpropagation paper and the *ReAct* paper) plus several images (a diagram, a poster, etc.) from `knowledge_base/`. Images are captioned with Gemini's vision model (cached to `knowledge_base/.captions.json` to avoid re-calling the API), and those captions are indexed alongside the paper text in a single combined vector index — so one retrieval step can return a mix of text and image results. When an image is retrieved, the real image (not just its caption) is passed back to Gemini for a grounded final answer.
+Extends RAG beyond plain text. It loads two research papers (a backpropagation paper and the *ReAct* paper) plus several images (a diagram, a poster, etc.) from `knowledge_base/`. Images are captioned with Gemini's vision model, and the captions are cached to `knowledge_base/.captions.json` so the API isn't called again each run. Those captions are indexed alongside the paper text in one combined vector index, so a single retrieval step can return a mix of text and image results. When an image comes back as a result, the real image (not just its caption) is passed to Gemini so the final answer is grounded in what the image actually shows.
 
 ## `chatbot.ipynb`
 
-The original prototyping notebook for the tool-using chatbot agent (`FunctionAgent`), kept at the project root since it shares its persisted index (`storage_chatbot/`) and session files with the deployed app below. This is where new agent behavior gets tried out before it's ported into `app/`.
+The original prototyping notebook for the tool-using chatbot agent (`FunctionAgent`). It lives at the project root because it shares its persisted index (`storage_chatbot/`) and session files with the deployed app below. New agent behavior gets tried out here first, then ported into `app/`.
 
-## `app/` — deployable chatbot
+## `app/`: deployable chatbot
 
-The productionized version of `chatbot.ipynb`: a FastAPI app with a chat UI, backed by Groq (`openai/gpt-oss-20b`) instead of Gemini for faster, cheaper inference. Tools:
+The production version of `chatbot.ipynb`. It's a FastAPI app with a chat UI, backed by Groq (`openai/gpt-oss-20b`) instead of Gemini for faster, cheaper inference. Try it live at [ragagent.fly.dev](https://ragagent.fly.dev/). Tools:
 - `query_document` — narrow factual Q&A over the `knowledge_base` papers via vector similarity search
-- `summarize_backprop_paper` / `summarize_reasoning_paper` — whole-document summaries via `SummaryIndex`, one tool per paper to avoid ambiguity about which document is meant
+- `summarize_backprop_paper` / `summarize_reasoning_paper` — whole-document summaries via `SummaryIndex`, one tool per paper so it's clear which document is meant
 - `get_weather` — live weather lookup (Open-Meteo API)
 - `web_search` — real-time web search (Tavily API)
 - `recall_past_conversation` — searches an episodic memory index built from every past turn, across all sessions
 
-The agent decides which tool (if any) a question needs based on tool descriptions in its system prompt.
+The agent picks which tool (if any) a question needs based on the tool descriptions in its system prompt.
 
-**Memory** is two-layered:
-- *Episodic* — every turn is embedded and stored in a searchable vector index (`storage_episodic/`), so the agent can look up specific past exchanges from any session.
-- *Semantic* — after each turn, a background task extracts durable facts about the user (name, ongoing projects, preferences) into `memory/user_profile.json`. These are silently injected into the system prompt at the start of every new session, so the agent already "knows" you without re-stating anything.
+### Session-to-session memory
 
-Per-session conversation state (`sessions/`) persists across server restarts via LlamaIndex's `Context` serialization, so a session survives a page refresh or a server redeploy.
+This is the core feature of the app: the agent remembers you across sessions, not just within one conversation. Memory works in two layers:
+
+- **Episodic memory** — every turn you have with the agent is embedded and stored in a searchable vector index (`storage_episodic/`). This means the agent can look back and find specific past exchanges from any session, not just the current one.
+- **Semantic memory** — after each turn, a background task pulls out durable facts about you (your name, ongoing projects, preferences) and saves them to `memory/user_profile.json`. These facts are quietly added to the system prompt at the start of every new session, so the agent already knows you when you show up. You never have to repeat yourself.
+
+On top of that, per-session conversation state (`sessions/`) is saved across server restarts using LlamaIndex's `Context` serialization. So a session survives a page refresh or even a server redeploy. Between the episodic index, the semantic profile, and persisted session state, the agent keeps its memory of you intact no matter how much time passes between conversations.
 
 ### Running locally
 
@@ -51,7 +56,7 @@ Open `http://127.0.0.1:8000`.
 
 ### Deploying (Fly.io)
 
-Ships as a Docker container with a persistent volume mounted at `/data`, so `sessions/`, `storage_episodic/`, `memory/`, and `storage_chatbot/` all survive restarts and redeploys — unlike most free-tier PaaS options, which wipe local disk on every sleep/wake cycle.
+Ships as a Docker container with a persistent volume mounted at `/data`, so `sessions/`, `storage_episodic/`, `memory/`, and `storage_chatbot/` all survive restarts and redeploys. Most free-tier PaaS options wipe local disk on every sleep/wake cycle, so this matters.
 
 ```bash
 fly launch --no-deploy
@@ -63,4 +68,4 @@ A GitHub Actions workflow (`.github/workflows/fly-deploy.yml`) redeploys automat
 
 ## Setup
 
-Requires a `.env` file with `GEMINI_API_KEY`, `GROQ_API_KEY`, and `TAVILY_API_KEY` (see `utils.py`) — Gemini is used by the two exploratory notebooks, Groq by the chatbot/app. Persisted vector indexes (`storage/`, `storage_chatbot/`, `storage_episodic/`) are rebuilt automatically on first run if missing.
+Requires a `.env` file with `GEMINI_API_KEY`, `GROQ_API_KEY`, and `TAVILY_API_KEY` (see `utils.py`). Gemini is used by the two exploratory notebooks, Groq by the chatbot/app. Persisted vector indexes (`storage/`, `storage_chatbot/`, `storage_episodic/`) are rebuilt automatically on first run if missing.

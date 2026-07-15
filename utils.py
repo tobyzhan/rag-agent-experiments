@@ -11,3 +11,6 @@ def get_gemini_api_key():
 
 def get_tavily_api_key():
     return os.environ["TAVILY_API_KEY"]
+
+def get_groq_api_key():
+    return os.environ["GROQ_API_KEY"]

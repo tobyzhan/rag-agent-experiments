@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.git/
+sessions/
+memory/
+storage_chatbot/
+storage_episodic/
+*.ipynb
+rag_notebook.html
+eBook-How-to-Build-a-Career-in-AI.pdf

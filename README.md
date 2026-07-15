@@ -25,9 +25,11 @@ Extends RAG beyond plain text. It loads two research papers (a backpropagation p
 
 The original prototyping notebook for the tool-using chatbot agent (`FunctionAgent`). It lives at the project root because it shares its persisted index (`storage_chatbot/`) and session files with the deployed app below. New agent behavior gets tried out here first, then ported into `app/`.
 
-## `app/`: deployable chatbot
+## `app/` - deployable chatbot
 
-The production version of `chatbot.ipynb`. It's a FastAPI app with a chat UI, backed by Groq (`openai/gpt-oss-20b`) instead of Gemini for faster, cheaper inference. Try it live at [ragagent.fly.dev](https://ragagent.fly.dev/). Tools:
+The production version of `chatbot.ipynb`. It's a FastAPI app with a chat UI, backed by Groq (`openai/gpt-oss-20b`) instead of Gemini for faster, cheaper inference. Try it live at [ragagent.fly.dev](https://ragagent.fly.dev/). 
+
+Tools:
 - `query_document` — narrow factual Q&A over the `knowledge_base` papers via vector similarity search
 - `summarize_backprop_paper` / `summarize_reasoning_paper` — whole-document summaries via `SummaryIndex`, one tool per paper so it's clear which document is meant
 - `get_weather` — live weather lookup (Open-Meteo API)

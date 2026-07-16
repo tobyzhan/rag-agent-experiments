@@ -54,8 +54,6 @@ You can log in with your Google account using the "Sign in" button in the top le
 
 If you don't log in, the app still works and still remembers you, just tied to that one browser instead of your account, using a random ID saved in local storage.
 
-Note that since this app is a personal project, Google login is currently limited to a manually approved list of test accounts unless the app has been published to production in Google Cloud Console. Anyone not on that list, or logging in after publishing, can still sign in as long as the app requests only basic profile information, which is all it asks for here.
-
 ### Running locally
 
 ```bash

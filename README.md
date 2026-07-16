@@ -1,8 +1,8 @@
 # RAG Practice
 
-Try the live chatbot here: https://ragagent.fly.dev/
+**Live app:** [ragagent.fly.dev](https://ragagent.fly.dev/)
 
-Experiments building Retrieval-Augmented Generation (RAG) pipelines with [LlamaIndex](https://www.llamaindex.ai/), plus a deployable chatbot built on top of them. The chatbot can answer questions about two research papers, check the weather, search the web, and it remembers things about you across different visits, different devices, and even server restarts, not just within one chat.
+Experiments building Retrieval-Augmented Generation (RAG) pipelines with [LlamaIndex](https://www.llamaindex.ai/), plus a deployable chatbot built on top of them. The chatbot can answer questions about two research papers, check the weather, search the web, and it remembers things about you across visits and devices, not just within one chat.
 
 ## Layout
 
@@ -15,19 +15,21 @@ scripts/      setup scripts (bootstrap.ps1)
 
 ## `notebooks/rag_notebook.ipynb`
 
-Core RAG fundamentals, built around the *"How to Build a Career in AI"* eBook. Indexes the PDF with a local embedding model (`BAAI/bge-small-en-v1.5`) and Gemini as the LLM, then tries different retrieval strategies: fixed size chunking vs semantic chunking, and `BAAI/bge-small` vs `all-mpnet-base-v2` embeddings. Ends with a small retrieval evaluation harness (hit rate and MRR) to see how well each setup finds the right source chunk for a set of test questions.
+Covers the basics of RAG, built around the *"How to Build a Career in AI"* eBook. It indexes the PDF with a local embedding model (`BAAI/bge-small-en-v1.5`) and uses Gemini as the LLM. Then it tries out different retrieval strategies: fixed-size chunking vs. semantic chunking, and `BAAI/bge-small` vs. `all-mpnet-base-v2` embeddings. It ends with a small retrieval evaluation harness (hit rate / MRR) that compares how well each setup finds the right source chunk for a set of test questions.
 
 ## `notebooks/multimodal_rag.ipynb`
 
-Extends RAG beyond plain text. Loads two research papers (a backpropagation paper and the *ReAct* paper) plus several images (a diagram, a poster, etc.) from `knowledge_base/`. Images are captioned with Gemini's vision model, and the captions get cached to `knowledge_base/.captions.json` so the API isn't called twice for the same image. Those captions are indexed alongside the paper text in one combined vector index, so a single retrieval step can return a mix of text and image results. When an image is retrieved, the real image (not just its caption) gets sent back to Gemini for a grounded final answer.
+Extends RAG beyond plain text. It loads two research papers (a backpropagation paper and the *ReAct* paper) plus several images (a diagram, a poster, etc.) from `knowledge_base/`. Images are captioned with Gemini's vision model, and the captions are cached to `knowledge_base/.captions.json` so the API isn't called again each run. Those captions are indexed alongside the paper text in one combined vector index, so a single retrieval step can return a mix of text and image results. When an image comes back as a result, the real image (not just its caption) is passed to Gemini so the final answer is grounded in what the image actually shows.
 
 ## `chatbot.ipynb`
 
-The original prototyping notebook for the tool using chatbot agent (`FunctionAgent`). It stays at the project root since it shares its persisted index (`storage_chatbot/`) and session files with the deployed app below. New agent behavior gets tried out here first, then ported into `app/`.
+The original prototyping notebook for the tool-using chatbot agent (`FunctionAgent`). It lives at the project root because it shares its persisted index (`storage_chatbot/`) and session files with the deployed app below. New agent behavior gets tried out here first, then ported into `app/`.
 
 ## `app/` - the deployable chatbot
 
-The productionized version of `chatbot.ipynb`: a FastAPI app with a chat UI, backed by Groq (`openai/gpt-oss-20b`) instead of Gemini for faster, cheaper replies. Tools:
+The production version of `chatbot.ipynb`. It's a FastAPI app with a chat UI, backed by Groq (`openai/gpt-oss-20b`) instead of Gemini for faster, cheaper inference.
+
+Tools:
 - `query_document` - answers narrow factual questions about the `knowledge_base` papers using vector similarity search
 - `summarize_backprop_paper` / `summarize_reasoning_paper` - whole document summaries via `SummaryIndex`, one tool per paper so there's no ambiguity about which document is meant
 - `get_weather` - live weather lookup (Open-Meteo API)
@@ -65,7 +67,7 @@ Open `http://127.0.0.1:8000`.
 
 ### Deploying (Fly.io)
 
-Ships as a Docker container with a persistent volume mounted at `/data`, so `sessions/`, `storage_episodic/`, `memory/`, and `storage_chatbot/` all survive restarts and redeploys. This matters a lot for this app specifically, since most free hosting options wipe local disk every time the app goes idle and wakes back up, which would otherwise erase all the memory features above.
+Ships as a Docker container with a persistent volume mounted at `/data`, so `sessions/`, `storage_episodic/`, `memory/`, and `storage_chatbot/` all survive restarts and redeploys. Most free-tier PaaS options wipe local disk on every sleep/wake cycle, so this matters a lot for an app whose main feature is memory that lasts.
 
 ```bash
 fly launch --no-deploy

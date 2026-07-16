@@ -2,6 +2,11 @@ import json
 import os
 from datetime import datetime, timezone
 
+import contextvars
+
+current_user_id = contextvars.ContextVar("current_user_id", default="anonymous")
+
+
 from llama_index.core import (
     Document,
     Settings,
@@ -28,12 +33,15 @@ episodic_index = load_or_create_episodic_index()
 episodic_query_engine = episodic_index.as_query_engine(similarity_top_k=3, response_mode="compact")
 
 
+from llama_index.core.vector_stores import MetadataFilters, ExactMatchFilter
+
 def add_turn_to_episodic_memory(session_id: str, user_message: str, response: str) -> None:
     text = f"User: {user_message}\nAssistant: {response}"
     doc = Document(
         text=text,
         metadata={
             "session_id": session_id,
+            "user_id": current_user_id.get(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     )
@@ -47,8 +55,9 @@ def recall_past_conversation(query: str) -> str:
     discussed earlier, asks you to recall something from a prior session, or
     when prior context would help answer accurately."""
     try:
-        result = episodic_query_engine.query(query)
-        text = str(result).strip()
+        filters = MetadataFilters(filters=[ExactMatchFilter(key="user_id", value=current_user_id.get())])
+        engine = episodic_index.as_query_engine(similarity_top_k=3, response_mode="compact", filters=filters)
+        text = str(engine.query(query)).strip()
         return text if text else "No relevant past conversation found."
     except Exception:
         return "No relevant past conversation found."
@@ -56,7 +65,6 @@ def recall_past_conversation(query: str) -> str:
 
 # --- Semantic memory: distilled, durable facts about the user ---
 
-PROFILE_PATH = os.path.join(DATA_DIR, "memory", "user_profile.json")
 
 EXTRACTION_PROMPT = """You maintain a running profile of durable facts about a user, based on their conversation with an assistant.
 
@@ -75,22 +83,27 @@ Return an updated JSON array of facts (strings only). Rules:
 - Return ONLY a JSON array of strings, nothing else - no markdown, no commentary.
 """
 
+def _profile_path(user_id: str) -> str:
+    return os.path.join(DATA_DIR, "memory", f"{user_id}.json")
 
-def load_profile() -> list[str]:
-    if not os.path.exists(PROFILE_PATH):
+
+def load_profile(user_id: str) -> list[str]:
+    path = _profile_path(user_id)
+    if not os.path.exists(path):
         return []
-    with open(PROFILE_PATH, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_profile(facts: list[str]) -> None:
-    os.makedirs(os.path.dirname(PROFILE_PATH), exist_ok=True)
-    with open(PROFILE_PATH, "w", encoding="utf-8") as f:
+def save_profile(user_id: str, facts: list[str]) -> None:
+    path = _profile_path(user_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(facts, f, indent=2)
 
 
-def extract_and_merge_facts(user_message: str, response: str) -> None:
-    existing = load_profile()
+def extract_and_merge_facts(user_id: str, user_message: str, response: str) -> None:
+    existing = load_profile(user_id)
     prompt = EXTRACTION_PROMPT.format(
         existing_facts=json.dumps(existing),
         user_message=user_message,
@@ -100,6 +113,6 @@ def extract_and_merge_facts(user_message: str, response: str) -> None:
         result = Settings.llm.complete(prompt)
         facts = json.loads(str(result).strip())
         if isinstance(facts, list):
-            save_profile(facts)
+            save_profile(user_id, facts)
     except Exception:
-        pass  # best-effort bookkeeping; never break the actual chat turn over this
+        pass
